@@ -4,16 +4,7 @@
         {
             "label": "Run RTMPose Inference on COCO",
             "type": "shell",
-            "command": "python",
-            "args": [
-                "run_rtmpose_inference.py",
-                "--zoo-dataset",
-                "coco-2017",
-                "--zoo-split",
-                "validation",
-                "--model",
-                "rtmpose-l_8xb256-420e_aic-coco-384x288"
-            ],
+            "command": "conda run -n rtmpose_env python run_rtmpose_inference.py --zoo-dataset coco-2017 --zoo-split validation",
             "problemMatcher": [],
             "presentation": {
                 "reveal": "always",
@@ -27,19 +18,7 @@
         {
             "label": "Launch FiftyOne Viewer",
             "type": "shell",
-            "command": "python",
-            "args": [
-                "launch_fiftyone.py",
-                "--source",
-                "zoo",
-                "--zoo-dataset",
-                "coco-2017",
-                "--zoo-split",
-                "validation",
-                "--dataset-name",
-                "coco-rtmpose",
-                "--tag-failures"
-            ],
+            "command": "conda run -n rtmpose_env python launch_fiftyone.py --source zoo --zoo-dataset coco-2017 --zoo-split validation --dataset-name coco-rtmpose --tag-failures",
             "problemMatcher": [],
             "presentation": {
                 "reveal": "always",
