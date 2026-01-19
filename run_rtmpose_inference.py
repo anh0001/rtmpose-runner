@@ -86,12 +86,43 @@ def get_image_files(dataset_dir, split='val'):
     return sorted([str(f) for f in image_files])
 
 
+def get_image_files_from_zoo(
+    zoo_dataset,
+    zoo_split='validation',
+    dataset_name=None,
+    max_samples=None,
+    persistent=False,
+):
+    try:
+        import fiftyone as fo
+        import fiftyone.zoo as foz
+    except Exception as exc:
+        raise RuntimeError("FiftyOne is required to load zoo datasets") from exc
+
+    if dataset_name and dataset_name in fo.list_datasets():
+        dataset = fo.load_dataset(dataset_name)
+    else:
+        dataset = foz.load_zoo_dataset(
+            zoo_dataset,
+            split=zoo_split,
+            dataset_name=dataset_name,
+            persistent=persistent,
+            max_samples=max_samples,
+        )
+
+    return sorted(dataset.values("filepath"))
+
+
 def run_inference(
     model_config='rtmpose-x_8xb32-270e_coco-wholebody-384x288',
     pose2d_weights=None,
     dataset_dir='dataset',
     split='val',
     output_dir='outputs',
+    zoo_dataset=None,
+    zoo_split='validation',
+    zoo_dataset_name=None,
+    zoo_max_samples=None,
     detection_mode='whole_image',  # or 'person_detection'
     batch_size=1,
     device='cuda:0',
@@ -116,7 +147,10 @@ def run_inference(
     print("RTMPose-X Inference Configuration")
     print("="*60)
     print(f"Model: {model_config}")
-    print(f"Dataset: {dataset_dir}/{split}")
+    if zoo_dataset:
+        print(f"Dataset: zoo/{zoo_dataset}:{zoo_split}")
+    else:
+        print(f"Dataset: {dataset_dir}/{split}")
     print(f"Detection mode: {detection_mode}")
     print(f"Device: {device}")
     print(f"Batch size: {batch_size}")
@@ -133,9 +167,18 @@ def run_inference(
     pred_dir.mkdir(exist_ok=True)
 
     # Get image files
+    results_split = zoo_split if zoo_dataset else split
     print("\nLoading image files...")
-    image_files = get_image_files(dataset_dir, split)
-    print(f"Found {len(image_files)} images in {split} split")
+    if zoo_dataset:
+        image_files = get_image_files_from_zoo(
+            zoo_dataset,
+            zoo_split=zoo_split,
+            dataset_name=zoo_dataset_name,
+            max_samples=zoo_max_samples,
+        )
+    else:
+        image_files = get_image_files(dataset_dir, split)
+    print(f"Found {len(image_files)} images in {results_split} split")
 
     if len(image_files) == 0:
         print("ERROR: No images found! Please check your dataset directory.")
@@ -260,7 +303,7 @@ def run_inference(
     fps = 1.0 / avg_time_per_image if avg_time_per_image > 0 else 0
 
     # Save all results
-    results_file = output_dir / f'all_results_{split}.json'
+    results_file = output_dir / f'all_results_{results_split}.json'
     with open(results_file, 'w') as f:
         json.dump(all_results, f, indent=2)
 
@@ -284,7 +327,7 @@ def run_inference(
         'model': model_config,
         'resolved_model_config': resolved_model_config,
         'pose2d_weights': resolved_pose2d_weights,
-        'dataset_split': split,
+        'dataset_split': results_split,
         'total_images': len(all_results),
         'total_time_seconds': total_time,
         'avg_time_per_image_ms': avg_time_per_image * 1000,
@@ -294,7 +337,7 @@ def run_inference(
         'timestamp': datetime.now().isoformat()
     }
 
-    metrics_file = output_dir / f'performance_metrics_{split}.json'
+    metrics_file = output_dir / f'performance_metrics_{results_split}.json'
     with open(metrics_file, 'w') as f:
         json.dump(metrics, f, indent=2)
 
@@ -313,6 +356,14 @@ def main():
                         help='Path to dataset directory')
     parser.add_argument('--split', type=str, default='val', choices=['train', 'val'],
                         help='Dataset split to use')
+    parser.add_argument('--zoo-dataset', type=str, default=None,
+                        help='FiftyOne zoo dataset name (overrides dataset-dir/split)')
+    parser.add_argument('--zoo-split', type=str, default='validation',
+                        help='FiftyOne zoo dataset split')
+    parser.add_argument('--zoo-dataset-name', type=str, default=None,
+                        help='FiftyOne dataset name to reuse for zoo loading')
+    parser.add_argument('--zoo-max-samples', type=int, default=None,
+                        help='Maximum number of zoo samples to load')
     parser.add_argument('--output-dir', type=str, default='outputs',
                         help='Output directory for results')
     parser.add_argument('--detection-mode', type=str, default='whole_image',
@@ -333,6 +384,10 @@ def main():
         dataset_dir=args.dataset_dir,
         split=args.split,
         output_dir=args.output_dir,
+        zoo_dataset=args.zoo_dataset,
+        zoo_split=args.zoo_split,
+        zoo_dataset_name=args.zoo_dataset_name,
+        zoo_max_samples=args.zoo_max_samples,
         detection_mode=args.detection_mode,
         batch_size=args.batch_size,
         device=args.device,
