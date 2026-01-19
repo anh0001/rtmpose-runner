@@ -31,7 +31,6 @@ ENV/
 rtmpose_env/
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo

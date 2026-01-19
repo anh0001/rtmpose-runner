@@ -1,0 +1,63 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run RTMPose Inference on COCO",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "run_rtmpose_inference.py",
+                "--zoo-dataset",
+                "coco-2017",
+                "--zoo-split",
+                "validation",
+                "--model",
+                "rtmpose-l_8xb256-420e_aic-coco-384x288"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            }
+        },
+        {
+            "label": "Launch FiftyOne Viewer",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "launch_fiftyone.py",
+                "--source",
+                "zoo",
+                "--zoo-dataset",
+                "coco-2017",
+                "--zoo-split",
+                "validation",
+                "--dataset-name",
+                "coco-rtmpose",
+                "--tag-failures"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": false
+            }
+        },
+        {
+            "label": "Run Inference + Launch Viewer",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Run RTMPose Inference on COCO",
+                "Launch FiftyOne Viewer"
+            ],
+            "problemMatcher": []
+        }
+    ]
+}
