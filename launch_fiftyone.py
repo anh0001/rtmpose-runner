@@ -586,8 +586,8 @@ def create_fiftyone_dataset(
 
     # Load RTMPose predictions
     pred_dir = Path(output_dir) / 'predictions'
+    inferred_count = infer_keypoint_count(pred_dir) if pred_dir.exists() else None
     if apply_coco_skeleton:
-        inferred_count = infer_keypoint_count(pred_dir) if pred_dir.exists() else None
         effective_count = keypoint_limit or inferred_count
         if effective_count == 17:
             dataset.default_skeleton = build_coco_skeleton(include_labels=True)
@@ -639,6 +639,9 @@ def launch_fiftyone_app(dataset, port=5151):
     print(f"Port: {port}")
     print("\nPress Ctrl+C to stop the app")
     print("="*60 + "\n")
+
+    fo.config.show_skeletons = True
+    fo.config.multicolor_keypoints = True
 
     # Set up signal handler for graceful shutdown
     def signal_handler(sig, frame):

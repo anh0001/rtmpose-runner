@@ -168,6 +168,14 @@ echo "Installing FiftyOne..."
 echo ""
 echo "Installing FiftyOne plugins..."
 if command -v fiftyone &> /dev/null; then
+    # Install VitPose plugin
+    echo "Installing VitPose plugin..."
+    "$PYTHON_IN_ENV" -m pip install --no-cache-dir transformers || \
+        echo "Warning: transformers installation failed"
+    fiftyone plugins download https://github.com/harpreetsahota204/vitpose-plugin || \
+        echo "Warning: VitPose plugin download failed (non-critical)"
+
+    # Install other FiftyOne plugins
     fiftyone plugins download https://github.com/voxel51/fiftyone-plugins || \
         echo "Warning: FiftyOne plugins download failed (non-critical)"
 else
