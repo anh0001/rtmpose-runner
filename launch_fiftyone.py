@@ -495,11 +495,29 @@ def launch_fiftyone_app(dataset, port=5151):
     print("\nPress Ctrl+C to stop the app")
     print("="*60 + "\n")
 
-    # Create session
-    session = fo.launch_app(dataset, port=port)
+    # Set up signal handler for graceful shutdown
+    def signal_handler(sig, frame):
+        print("\n\nShutting down gracefully...")
+        sys.exit(0)
 
-    # Keep session alive
-    session.wait()
+    signal.signal(signal.SIGINT, signal_handler)
+
+    try:
+        # Create session and disable auto-opening browser to avoid interrupt issues
+        session = fo.launch_app(dataset, port=port, auto=False)
+
+        print(f"FiftyOne app is running at: http://localhost:{port}")
+        print("Open the URL in your browser to view the dataset.\n")
+
+        # Keep session alive
+        session.wait()
+    except KeyboardInterrupt:
+        print("\n\nShutting down gracefully...")
+    except Exception as e:
+        print(f"\nError during session: {e}")
+        raise
+    finally:
+        print("FiftyOne app stopped.")
 
 
 def main():
