@@ -47,6 +47,16 @@ RTMPOSE_X_WEIGHTS = (
 )
 
 
+def _json_default(obj):
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, Path):
+        return str(obj)
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
+
 def _find_mmpose_config(relative_path):
     try:
         import mmpose
@@ -413,7 +423,7 @@ def run_inference(
     # Save all results
     results_file = output_dir / f'all_results_{results_split}.json'
     with open(results_file, 'w') as f:
-        json.dump(all_results, f, indent=2)
+        json.dump(all_results, f, indent=2, default=_json_default)
 
     # Generate performance report
     print("\n" + "="*60)
@@ -447,7 +457,7 @@ def run_inference(
 
     metrics_file = output_dir / f'performance_metrics_{results_split}.json'
     with open(metrics_file, 'w') as f:
-        json.dump(metrics, f, indent=2)
+        json.dump(metrics, f, indent=2, default=_json_default)
 
     print(f"\nPerformance metrics saved to: {metrics_file}")
 
