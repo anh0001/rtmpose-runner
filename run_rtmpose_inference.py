@@ -8,18 +8,22 @@ This script runs RTMPose-X model on images in the dataset folder and saves:
 3. Performance metrics and statistics
 """
 
+# Suppress verbose output from MMCV and MMPose
+import os
+os.environ['MMENGINE_LOG_LEVEL'] = 'WARNING'
+
 # Apply MMCV extension fix before importing mmpose
 try:
     import mmcv_fix  # noqa: F401
 except ImportError:
     pass
 
-import os
 import json
 import time
 from pathlib import Path
 import argparse
 from datetime import datetime
+import logging
 
 import cv2
 import numpy as np
@@ -27,6 +31,13 @@ try:
     import yaml
 except Exception:
     yaml = None
+
+# Suppress verbose logging from MMPose and MMCV
+logging.getLogger('mmengine').setLevel(logging.WARNING)
+logging.getLogger('mmpose').setLevel(logging.WARNING)
+logging.getLogger('mmcv').setLevel(logging.WARNING)
+logging.getLogger('mmdet').setLevel(logging.WARNING)
+
 from mmpose.apis import MMPoseInferencer
 
 RTMPOSE_X_CONFIG = 'rtmpose-x_8xb32-270e_coco-wholebody-384x288'
