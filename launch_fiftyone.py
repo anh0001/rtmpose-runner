@@ -11,6 +11,8 @@ This script launches FiftyOne to visualize:
 
 import json
 import argparse
+import signal
+import sys
 from pathlib import Path
 
 import fiftyone as fo
@@ -216,12 +218,6 @@ def build_keypoints_label(pred_instances, width, height, keypoint_limit=None):
             keypoint["bbox"] = bbox
 
         keypoints.append(keypoint)
-
-    # Debug: check types
-    if keypoints:
-        print(f"DEBUG: keypoints list type: {type(keypoints)}, len: {len(keypoints)}")
-        print(f"DEBUG: first element type: {type(keypoints[0])}")
-        print(f"DEBUG: first element: {keypoints[0]}")
 
     return fo.Keypoints(keypoints=keypoints)
 
