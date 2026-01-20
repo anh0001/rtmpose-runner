@@ -58,6 +58,15 @@ COCO_SKELETON_EDGES = [
     [14, 16],
 ]
 
+COCO_FOOT_KEYPOINT_LABELS = [
+    "left_big_toe",
+    "left_small_toe",
+    "left_heel",
+    "right_big_toe",
+    "right_small_toe",
+    "right_heel",
+]
+
 
 def load_rtmpose_predictions(pred_dir):
     """Load RTMPose predictions from JSON files."""
@@ -94,11 +103,117 @@ def _is_yolo_dataset_dir(dataset_dir):
     return False
 
 
-def build_coco_skeleton():
+def build_coco_skeleton(include_labels=True):
+    labels = COCO_KEYPOINT_LABELS if include_labels else None
     return fo.KeypointSkeleton(
-        labels=COCO_KEYPOINT_LABELS,
+        labels=labels,
         edges=COCO_SKELETON_EDGES,
     )
+
+
+def _build_face_edges(offset):
+    edges = []
+
+    def line(start, end):
+        edges.extend([[i + offset, i + 1 + offset] for i in range(start, end)])
+
+    def loop(start, count):
+        edges.extend([[start + i + offset, start + i + 1 + offset]
+                      for i in range(count - 1)])
+        edges.append([start + count - 1 + offset, start + offset])
+
+    # Jawline 0-16
+    line(0, 16)
+    # Eyebrows 17-21 and 22-26
+    line(17, 21)
+    line(22, 26)
+    # Nose bridge 27-30 and nose bottom 31-35
+    line(27, 30)
+    line(31, 35)
+    edges.append([30 + offset, 31 + offset])
+    # Eyes 36-41 and 42-47
+    loop(36, 6)
+    loop(42, 6)
+    # Mouth outer 48-59 and inner 60-67
+    loop(48, 12)
+    loop(60, 8)
+
+    return edges
+
+
+def _build_hand_edges(offset):
+    edges = []
+    wrist = offset
+    finger_starts = [1, 5, 9, 13, 17]
+
+    for start in finger_starts:
+        edges.append([wrist, offset + start])
+
+    finger_ranges = [
+        [1, 2, 3, 4],      # thumb
+        [5, 6, 7, 8],      # index
+        [9, 10, 11, 12],   # middle
+        [13, 14, 15, 16],  # ring
+        [17, 18, 19, 20],  # pinky
+    ]
+    for finger in finger_ranges:
+        for i in range(len(finger) - 1):
+            edges.append([offset + finger[i], offset + finger[i + 1]])
+
+    return edges
+
+
+def _build_wholebody_labels():
+    face_labels = [f"face_{i}" for i in range(68)]
+    left_hand = [
+        "left_wrist",
+        "left_thumb1", "left_thumb2", "left_thumb3", "left_thumb4",
+        "left_index1", "left_index2", "left_index3", "left_index4",
+        "left_middle1", "left_middle2", "left_middle3", "left_middle4",
+        "left_ring1", "left_ring2", "left_ring3", "left_ring4",
+        "left_pinky1", "left_pinky2", "left_pinky3", "left_pinky4",
+    ]
+    right_hand = [
+        "right_wrist",
+        "right_thumb1", "right_thumb2", "right_thumb3", "right_thumb4",
+        "right_index1", "right_index2", "right_index3", "right_index4",
+        "right_middle1", "right_middle2", "right_middle3", "right_middle4",
+        "right_ring1", "right_ring2", "right_ring3", "right_ring4",
+        "right_pinky1", "right_pinky2", "right_pinky3", "right_pinky4",
+    ]
+    return (
+        COCO_KEYPOINT_LABELS
+        + COCO_FOOT_KEYPOINT_LABELS
+        + face_labels
+        + left_hand
+        + right_hand
+    )
+
+
+def build_coco_wholebody_skeleton(include_labels=True):
+    labels = _build_wholebody_labels() if include_labels else None
+    edges = list(COCO_SKELETON_EDGES)
+
+    # Foot edges (body indices 15/16, foot indices 17-22)
+    edges.extend([
+        [15, 17],
+        [17, 18],
+        [18, 19],
+        [15, 19],
+        [16, 20],
+        [20, 21],
+        [21, 22],
+        [16, 22],
+    ])
+
+    # Face edges (68 points starting at index 23)
+    edges.extend(_build_face_edges(23))
+
+    # Hand edges (left hand index 91, right hand index 112)
+    edges.extend(_build_hand_edges(91))
+    edges.extend(_build_hand_edges(112))
+
+    return fo.KeypointSkeleton(labels=labels, edges=edges)
 
 
 def _parse_keypoints(raw_keypoints):
@@ -220,6 +335,29 @@ def build_keypoints_label(pred_instances, width, height, keypoint_limit=None):
         keypoints.append(keypoint)
 
     return fo.Keypoints(keypoints=keypoints)
+
+
+def infer_keypoint_count(pred_dir):
+    pred_dir = Path(pred_dir)
+    for json_file in pred_dir.glob("*.json"):
+        try:
+            with open(json_file, "r") as f:
+                pred_data = json.load(f)
+            if isinstance(pred_data, dict):
+                pred_data = (
+                    pred_data.get("predictions")
+                    or pred_data.get("instances")
+                    or ([pred_data] if "keypoints" in pred_data else pred_data)
+                )
+            if isinstance(pred_data, list) and pred_data:
+                instance = pred_data[0]
+                raw_points = instance.get("keypoints") if isinstance(instance, dict) else instance
+                points, _ = _parse_keypoints(raw_points or [])
+                if points:
+                    return len(points)
+        except Exception:
+            continue
+    return None
 
 
 def _infer_keypoints_field(dataset, exclude_fields=None):
@@ -446,11 +584,18 @@ def create_fiftyone_dataset(
 
                 dataset.add_samples(samples)
 
-    if apply_coco_skeleton:
-        dataset.default_skeleton = build_coco_skeleton()
-
     # Load RTMPose predictions
     pred_dir = Path(output_dir) / 'predictions'
+    if apply_coco_skeleton:
+        inferred_count = infer_keypoint_count(pred_dir) if pred_dir.exists() else None
+        effective_count = keypoint_limit or inferred_count
+        if effective_count == 17:
+            dataset.default_skeleton = build_coco_skeleton(include_labels=True)
+        elif effective_count == 133:
+            dataset.default_skeleton = build_coco_wholebody_skeleton(include_labels=True)
+        elif effective_count and effective_count > 17:
+            dataset.default_skeleton = build_coco_skeleton(include_labels=False)
+
     if pred_dir.exists():
         attach_predictions(
             dataset,
@@ -601,7 +746,7 @@ def main():
     parser.add_argument(
         '--no-coco-skeleton',
         action='store_true',
-        help='Disable COCO-17 skeleton overlay'
+        help='Disable skeleton overlay'
     )
     parser.add_argument(
         '--skip-eval',
@@ -653,7 +798,7 @@ def main():
     if keypoint_limit is None and args.source == 'zoo' and 'coco' in args.zoo_dataset:
         keypoint_limit = 17
 
-    apply_coco_skeleton = (not args.no_coco_skeleton) and (keypoint_limit == 17)
+    apply_coco_skeleton = not args.no_coco_skeleton
 
     dataset = create_fiftyone_dataset(
         source=args.source,
