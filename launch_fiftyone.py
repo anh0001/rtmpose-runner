@@ -272,15 +272,23 @@ def _bbox_from_points(points):
     return [min_x, min_y, width, height]
 
 
-def build_keypoints_label(pred_instances, width, height, keypoint_limit=None):
+def build_keypoints_label(
+    pred_instances,
+    width,
+    height,
+    keypoint_limit=None,
+    label=None,
+):
     keypoints = []
 
     if pred_instances is None:
         return fo.Keypoints(keypoints=keypoints)
 
     for instance in pred_instances:
+        instance_label = None
         if isinstance(instance, dict):
             raw_points = instance.get("keypoints") or []
+            instance_label = instance.get("label")
         else:
             raw_points = instance
 
@@ -310,8 +318,10 @@ def build_keypoints_label(pred_instances, width, height, keypoint_limit=None):
         if instance_confidence is None and scores:
             instance_confidence = sum(scores) / len(scores)
 
+        label_to_use = instance_label or label
+
         # Create keypoint without confidence parameter
-        keypoint = fo.Keypoint(points=normalized)
+        keypoint = fo.Keypoint(points=normalized, label=label_to_use)
 
         # Keypoint.confidence expects a per-point list of floats
         if scores:
@@ -382,6 +392,26 @@ def _infer_keypoints_field(dataset, exclude_fields=None):
     return None
 
 
+def _infer_keypoint_label(dataset, gt_field):
+    if gt_field is None:
+        return None
+    try:
+        for sample in dataset.iter_samples(progress=False):
+            gt = sample.get(gt_field)
+            if gt is None:
+                continue
+            keypoints = getattr(gt, "keypoints", None)
+            if not keypoints:
+                continue
+            for kp in keypoints:
+                if kp.label:
+                    return kp.label
+            return keypoints[0].label
+    except Exception:
+        return None
+    return None
+
+
 def _save_view(dataset, name, view):
     try:
         dataset.save_view(name, view)
@@ -398,6 +428,7 @@ def attach_predictions(
     pred_dir,
     pred_field,
     keypoint_limit=None,
+    pred_label=None,
 ):
     predictions = load_rtmpose_predictions(pred_dir)
     if not predictions:
@@ -430,6 +461,7 @@ def attach_predictions(
             metadata.width,
             metadata.height,
             keypoint_limit=keypoint_limit,
+            label=pred_label,
         )
         sample[pred_field] = keypoints
         sample["num_persons"] = len(keypoints.keypoints)
@@ -471,6 +503,13 @@ def evaluate_pose(
         method="coco",
     )
 
+    # Print detailed metrics
+    print("\n" + "="*60)
+    print("COCO OKS Evaluation Results")
+    print("="*60)
+    results.print_report()
+    print("="*60 + "\n")
+
     low_oks_filter = (
         (F(eval_key) == "tp")
         & (F(f"{eval_key}_oks") >= low_oks_min)
@@ -511,6 +550,7 @@ def create_fiftyone_dataset(
     gt_field=None,
     eval_key='eval_pose',
     keypoint_limit=None,
+    pred_label=None,
     apply_coco_skeleton=False,
     run_eval=True,
     save_views=True,
@@ -526,6 +566,7 @@ def create_fiftyone_dataset(
         output_dir: Directory containing RTMPose outputs
         dataset_name: Name for the FiftyOne dataset
         persistent: Whether to make the dataset persistent
+        pred_label: Label to assign to predicted keypoints
     """
 
     # Check if dataset already exists
@@ -596,18 +637,32 @@ def create_fiftyone_dataset(
         elif effective_count and effective_count > 17:
             dataset.default_skeleton = build_coco_skeleton(include_labels=False)
 
+    if gt_field is None:
+        gt_field = _infer_keypoints_field(dataset, exclude_fields=[pred_field])
+
+    if pred_label is None:
+        pred_label = _infer_keypoint_label(dataset, gt_field)
+
+    # Set default label to "person" if not specified and no GT found
+    if pred_label is None and source == 'zoo' and 'coco' in zoo_dataset:
+        pred_label = "person"
+
+    # Set default label to "person" even for local datasets if no label inferred
+    # This ensures predictions have labels for evaluation compatibility
+    if pred_label is None:
+        pred_label = "person"
+        print(f"No ground truth keypoint labels found. Setting prediction label to: {pred_label}")
+
     if pred_dir.exists():
         attach_predictions(
             dataset,
             pred_dir,
             pred_field=pred_field,
             keypoint_limit=keypoint_limit,
+            pred_label=pred_label,
         )
     else:
         print(f"Warning: Predictions directory not found: {pred_dir}")
-
-    if gt_field is None:
-        gt_field = _infer_keypoints_field(dataset, exclude_fields=[pred_field])
 
     if run_eval:
         evaluate_pose(
@@ -729,6 +784,12 @@ def main():
         help='Field name for RTMPose predictions'
     )
     parser.add_argument(
+        '--pred-label',
+        type=str,
+        default=None,
+        help='Label to assign to predicted keypoints (defaults to GT label)'
+    )
+    parser.add_argument(
         '--gt-field',
         type=str,
         default=None,
@@ -817,6 +878,7 @@ def main():
         gt_field=args.gt_field,
         eval_key=args.eval_key,
         keypoint_limit=keypoint_limit,
+        pred_label=args.pred_label,
         apply_coco_skeleton=apply_coco_skeleton,
         run_eval=not args.skip_eval,
         save_views=not args.no_save_views,

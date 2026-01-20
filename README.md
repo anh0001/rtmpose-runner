@@ -66,6 +66,61 @@ python run_rtmpose_inference.py --no-visualize --split val
 python launch_fiftyone.py --source local --dataset-dir dataset/polar --split val
 ```
 
+## Model Evaluation and Comparison
+
+### Comparing RTMPose-X with VitPose
+
+This project includes a script to evaluate RTMPose-X predictions against VitPose outputs as a reference baseline. This is useful for:
+- Quick quality checks without manual annotations
+- Comparing two different pose estimation models
+- Understanding relative performance differences
+
+**Important Note**: This comparison uses VitPose predictions as pseudo-ground truth, NOT human-annotated keypoints. The evaluation metrics show how well RTMPose-X agrees with VitPose, not the absolute accuracy of either model.
+
+### Running the Evaluation
+
+1. **Generate RTMPose-X predictions** (if not already done):
+   ```bash
+   python run_rtmpose_inference.py --split val
+   ```
+
+2. **Load dataset in FiftyOne and run VitPose**:
+   ```bash
+   python launch_fiftyone.py --source local --dataset-dir dataset/polar --split val --dataset-name polar-rtmpose --skip-eval
+   ```
+
+   Then in the FiftyOne UI:
+   - Run the VitPose plugin on your dataset
+   - This creates a 'vitpose-base-keypoints' field with reference keypoints
+
+3. **Run the evaluation script**:
+   ```bash
+   python fix_evaluation.py
+   ```
+
+### What the Evaluation Does
+
+The `fix_evaluation.py` script:
+1. Ensures prediction labels match ground truth labels (both set to "person")
+2. Runs COCO OKS (Object Keypoint Similarity) evaluation
+3. Compares RTMPose-X predictions against VitPose outputs
+4. Generates metrics including:
+   - Average Precision (AP) at different OKS thresholds
+   - AP at OKS=0.50, 0.75, etc.
+   - Performance across different keypoint types
+
+### Understanding the Results
+
+The evaluation outputs COCO-style metrics:
+- **AP**: Average Precision averaged over OKS thresholds from 0.50 to 0.95
+- **AP50**: Average Precision at OKS threshold of 0.50 (more lenient)
+- **AP75**: Average Precision at OKS threshold of 0.75 (stricter)
+
+Higher values indicate better agreement between RTMPose-X and VitPose. However, remember that:
+- High agreement doesn't necessarily mean both models are correct
+- Low agreement could mean RTMPose-X is wrong, VitPose is wrong, or they have different strengths
+- For true accuracy assessment, you need human-annotated ground truth
+
 ## Command Line Arguments
 
 - `--model`: RTMPose model variant (default: 'rtmpose-x')
