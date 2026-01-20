@@ -167,19 +167,29 @@ echo "Installing FiftyOne..."
 # --- Install FiftyOne plugins ---
 echo ""
 echo "Installing FiftyOne plugins..."
-if command -v fiftyone &> /dev/null; then
+# Install transformers package required for VitPose plugin
+echo "Installing transformers for VitPose plugin..."
+"$PYTHON_IN_ENV" -m pip install --no-cache-dir transformers || \
+    echo "Warning: transformers installation failed"
+
+# Use the fiftyone command from the conda environment
+FIFTYONE_CMD="$CONDA_DIR/envs/$ENV_NAME/bin/fiftyone"
+if [ -f "$FIFTYONE_CMD" ]; then
     # Install VitPose plugin
     echo "Installing VitPose plugin..."
-    "$PYTHON_IN_ENV" -m pip install --no-cache-dir transformers || \
-        echo "Warning: transformers installation failed"
-    fiftyone plugins download https://github.com/harpreetsahota204/vitpose-plugin || \
+    "$FIFTYONE_CMD" plugins download https://github.com/harpreetsahota204/vitpose-plugin || \
         echo "Warning: VitPose plugin download failed (non-critical)"
 
     # Install other FiftyOne plugins
-    fiftyone plugins download https://github.com/voxel51/fiftyone-plugins || \
+    "$FIFTYONE_CMD" plugins download https://github.com/voxel51/fiftyone-plugins || \
         echo "Warning: FiftyOne plugins download failed (non-critical)"
+
+    echo "Verifying VitPose plugin installation..."
+    "$FIFTYONE_CMD" plugins list | grep -i vitpose && \
+        echo "✓ VitPose plugin installed successfully!" || \
+        echo "⚠ VitPose plugin may not be installed correctly"
 else
-    echo "Warning: FiftyOne command not found, skipping plugins"
+    echo "Warning: FiftyOne command not found at $FIFTYONE_CMD, skipping plugins"
 fi
 
 # --- Install COCO tools ---
@@ -253,4 +263,13 @@ echo "Setup completed!"
 echo "=========================================="
 echo "To activate the environment, run:"
 echo "  conda activate ${ENV_NAME}"
+echo ""
+echo "IMPORTANT: To use FiftyOne and the VitPose plugin:"
+echo "  1. Always activate the conda environment first:"
+echo "     conda activate ${ENV_NAME}"
+echo "  2. Launch FiftyOne from the activated environment:"
+echo "     ./launch_fiftyone.py"
+echo ""
+echo "The VitPose plugin will only appear in the FiftyOne UI"
+echo "when launched from the conda environment."
 echo ""
