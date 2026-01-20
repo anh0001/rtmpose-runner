@@ -184,24 +184,44 @@ def build_keypoints_label(pred_instances, width, height, keypoint_limit=None):
 
         normalized = _normalize_points(points, width, height)
 
-        confidence = None
+        instance_confidence = None
         if isinstance(instance, dict):
-            confidence = instance.get("bbox_score")
-            if confidence is None:
-                confidence = instance.get("score")
+            instance_confidence = instance.get("bbox_score")
+            if instance_confidence is None:
+                instance_confidence = instance.get("score")
 
-        if confidence is None and scores:
-            confidence = sum(scores) / len(scores)
+        if instance_confidence is None and scores:
+            instance_confidence = sum(scores) / len(scores)
 
-        keypoint = fo.Keypoint(points=normalized, confidence=confidence)
+        # Create keypoint without confidence parameter
+        keypoint = fo.Keypoint(points=normalized)
+
+        # Keypoint.confidence expects a per-point list of floats
         if scores:
-            keypoint["keypoint_scores"] = scores
+            keypoint.confidence = [float(s) for s in scores]
+
+        # Store instance-level confidence separately as a scalar
+        if instance_confidence is not None:
+            if isinstance(instance_confidence, (list, tuple)):
+                instance_confidence = (
+                    float(instance_confidence[0]) if instance_confidence else None
+                )
+            else:
+                instance_confidence = float(instance_confidence)
+            if instance_confidence is not None:
+                keypoint["instance_confidence"] = instance_confidence
 
         bbox = _bbox_from_points(normalized)
         if bbox:
             keypoint["bbox"] = bbox
 
         keypoints.append(keypoint)
+
+    # Debug: check types
+    if keypoints:
+        print(f"DEBUG: keypoints list type: {type(keypoints)}, len: {len(keypoints)}")
+        print(f"DEBUG: first element type: {type(keypoints[0])}")
+        print(f"DEBUG: first element: {keypoints[0]}")
 
     return fo.Keypoints(keypoints=keypoints)
 
@@ -328,7 +348,7 @@ def evaluate_pose(
     if tag_failures:
         low_oks_view.tag_samples("needs_review")
 
-    fp_filter = (F(eval_key) == "fp") & (F("confidence") >= fp_confidence)
+    fp_filter = (F(eval_key) == "fp") & (F("instance_confidence") >= fp_confidence)
     fp_view = dataset.filter_labels(pred_field, fp_filter)
     if save_views:
         _save_view(dataset, "high_conf_fp", fp_view)
