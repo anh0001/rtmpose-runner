@@ -1,6 +1,7 @@
 # RTMPose-X Inference Setup
 
 This project provides scripts to run RTMPose-X pose estimation model on your dataset.
+The default dataset is `dataset/polar` in YOLO format.
 
 ## Quick Start
 
@@ -59,13 +60,19 @@ python run_rtmpose_inference.py --device cpu --split val
 python run_rtmpose_inference.py --no-visualize --split val
 ```
 
+## Visualize with FiftyOne
+
+```bash
+python launch_fiftyone.py --source local --dataset-dir dataset/polar --split val
+```
+
 ## Command Line Arguments
 
 - `--model`: RTMPose model variant (default: 'rtmpose-x')
   - Options: rtmpose-x, rtmpose-l, rtmpose-m, rtmpose-s
-- `--dataset-dir`: Path to dataset directory (default: 'dataset')
+- `--dataset-dir`: Path to dataset directory (default: 'dataset/polar')
 - `--split`: Dataset split to use (default: 'val')
-  - Options: train, val
+  - Options: train, val, test
 - `--output-dir`: Output directory for results (default: 'outputs')
 - `--detection-mode`: Detection mode (default: 'whole_image')
   - `whole_image`: Faster, assumes single person per image
@@ -100,18 +107,18 @@ The script outputs:
 
 ## Dataset Structure
 
-Expected dataset structure:
+Expected dataset structure (YOLO format):
 ```
-dataset/
-├── train/
-│   ├── class1/
-│   │   ├── image1.jpg
-│   │   └── ...
-│   └── class2/
-│       └── ...
-└── val/
-    ├── class1/
-    └── class2/
+dataset/polar/
+├── dataset.yaml
+├── images/
+│   ├── train/
+│   ├── val/
+│   └── test/
+└── labels/
+    ├── train/
+    ├── val/
+    └── test/
 ```
 
 ## Troubleshooting

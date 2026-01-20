@@ -2,9 +2,9 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Run RTMPose Inference on COCO",
+            "label": "Run RTMPose Inference on Polar",
             "type": "shell",
-            "command": "bash -c 'source $(conda info --base)/etc/profile.d/conda.sh && conda activate rtmpose_env && python run_rtmpose_inference.py --zoo-dataset coco-2017 --zoo-split validation'",
+            "command": "bash -c 'source $(conda info --base)/etc/profile.d/conda.sh && conda activate rtmpose_env && python run_rtmpose_inference.py --dataset-dir dataset/polar --split val'",
             "problemMatcher": [],
             "presentation": {
                 "reveal": "always",
@@ -16,9 +16,9 @@
             }
         },
         {
-            "label": "Launch FiftyOne Viewer",
+            "label": "Launch FiftyOne Viewer (Polar)",
             "type": "shell",
-            "command": "bash -c 'source $(conda info --base)/etc/profile.d/conda.sh && conda activate rtmpose_env && python launch_fiftyone.py --source zoo --zoo-dataset coco-2017 --zoo-split validation --dataset-name coco-rtmpose --tag-failures'",
+            "command": "bash -c 'source $(conda info --base)/etc/profile.d/conda.sh && conda activate rtmpose_env && python launch_fiftyone.py --source local --dataset-dir dataset/polar --split val --dataset-name polar-rtmpose'",
             "problemMatcher": [],
             "presentation": {
                 "reveal": "always",
@@ -33,8 +33,8 @@
             "label": "Run Inference + Launch Viewer",
             "dependsOrder": "sequence",
             "dependsOn": [
-                "Run RTMPose Inference on COCO",
-                "Launch FiftyOne Viewer"
+                "Run RTMPose Inference on Polar",
+                "Launch FiftyOne Viewer (Polar)"
             ],
             "problemMatcher": []
         }

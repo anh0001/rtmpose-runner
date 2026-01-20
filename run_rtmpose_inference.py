@@ -23,6 +23,10 @@ from datetime import datetime
 
 import cv2
 import numpy as np
+try:
+    import yaml
+except Exception:
+    yaml = None
 from mmpose.apis import MMPoseInferencer
 
 RTMPOSE_X_CONFIG = 'rtmpose-x_8xb32-270e_coco-wholebody-384x288'
@@ -71,19 +75,112 @@ def resolve_model_config_and_weights(model_config, pose2d_weights):
     return model_config, pose2d_weights
 
 
+def _collect_images_in_dir(image_dir):
+    image_files = []
+    for ext in ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG']:
+        image_files.extend(list(image_dir.rglob(ext)))
+    return [str(f) for f in image_files]
+
+
+def _load_yolo_dataset_config(dataset_dir):
+    if yaml is None:
+        return None
+
+    dataset_dir = Path(dataset_dir)
+    for name in ("dataset.yaml", "data.yaml"):
+        yaml_path = dataset_dir / name
+        if yaml_path.is_file():
+            with open(yaml_path, "r") as f:
+                data = yaml.safe_load(f) or {}
+            if isinstance(data, dict):
+                data["_config_path"] = yaml_path
+                return data
+    return None
+
+
+def _read_split_list(list_path, dataset_root):
+    paths = []
+    with open(list_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            entry = Path(line)
+            if not entry.is_absolute():
+                entry = dataset_root / entry
+            paths.append(str(entry))
+    return paths
+
+
+def _get_yolo_image_files(dataset_dir, split):
+    dataset_config = _load_yolo_dataset_config(dataset_dir)
+    if not dataset_config:
+        return None
+
+    config_path = dataset_config.get("_config_path")
+    if split not in dataset_config:
+        available = [key for key in ("train", "val", "test") if key in dataset_config]
+        raise ValueError(
+            f"Split '{split}' not found in {config_path}. Available splits: {available}"
+        )
+
+    dataset_root = Path(dataset_dir)
+    dataset_path = dataset_config.get("path")
+    if dataset_path:
+        dataset_root = (dataset_root / dataset_path).resolve()
+
+    split_entry = dataset_config.get(split)
+    entries = split_entry if isinstance(split_entry, (list, tuple)) else [split_entry]
+
+    image_files = []
+    for entry in entries:
+        if entry is None:
+            continue
+        entry_path = Path(str(entry))
+        if not entry_path.is_absolute():
+            entry_path = dataset_root / entry_path
+
+        if entry_path.is_dir():
+            image_files.extend(_collect_images_in_dir(entry_path))
+            continue
+
+        if entry_path.is_file():
+            if entry_path.suffix.lower() == ".txt":
+                image_files.extend(_read_split_list(entry_path, dataset_root))
+            else:
+                image_files.append(str(entry_path))
+            continue
+
+        entry_str = str(entry)
+        if any(token in entry_str for token in ["*", "?", "[", "]"]):
+            image_files.extend(
+                [str(p) for p in dataset_root.glob(entry_str) if p.is_file()]
+            )
+
+    return sorted(set(image_files))
+
+
 def get_image_files(dataset_dir, split='val'):
     """Get list of image files from dataset directory."""
-    split_dir = Path(dataset_dir) / split
+    dataset_dir = Path(dataset_dir)
+
+    if not dataset_dir.exists():
+        raise ValueError(f"Dataset directory not found: {dataset_dir}")
+
+    yolo_images = _get_yolo_image_files(dataset_dir, split)
+    if yolo_images is not None:
+        return yolo_images
+
+    yolo_images_dir = dataset_dir / "images" / split
+    if yolo_images_dir.is_dir():
+        return sorted(_collect_images_in_dir(yolo_images_dir))
+
+    split_dir = dataset_dir / split
 
     if not split_dir.exists():
         raise ValueError(f"Dataset split '{split}' not found at {split_dir}")
 
-    # Get all jpg/png/jpeg files
-    image_files = []
-    for ext in ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG']:
-        image_files.extend(list(split_dir.rglob(ext)))
-
-    return sorted([str(f) for f in image_files])
+    return sorted(_collect_images_in_dir(split_dir))
 
 
 def get_image_files_from_zoo(
@@ -116,7 +213,7 @@ def get_image_files_from_zoo(
 def run_inference(
     model_config='rtmpose-x_8xb32-270e_coco-wholebody-384x288',
     pose2d_weights=None,
-    dataset_dir='dataset',
+    dataset_dir='dataset/polar',
     split='val',
     output_dir='outputs',
     zoo_dataset=None,
@@ -134,8 +231,8 @@ def run_inference(
     Args:
         model_config: RTMPose model config name (e.g., 'rtmpose-x_8xb32-270e_coco-wholebody-384x288', 'rtmpose-l', 'rtmpose-m')
         pose2d_weights: Optional checkpoint path/URL for pose model weights
-        dataset_dir: Path to dataset directory
-        split: Dataset split to use ('train' or 'val')
+        dataset_dir: Path to dataset directory (supports YOLO-style datasets)
+        split: Dataset split to use ('train', 'val', or 'test')
         output_dir: Directory to save outputs
         detection_mode: 'whole_image' (no detector, for single person) or 'person_detection'
         batch_size: Batch size for inference
@@ -352,9 +449,9 @@ def main():
                         help='RTMPose model config name (e.g., rtmpose-x_8xb32-270e_coco-wholebody-384x288 for wholebody, rtmpose-l_8xb256-420e_aic-coco-384x288 for body-only)')
     parser.add_argument('--pose2d-weights', type=str, default=None,
                         help='Optional pose2d checkpoint path/URL. Useful for models not in the meta index.')
-    parser.add_argument('--dataset-dir', type=str, default='dataset',
+    parser.add_argument('--dataset-dir', type=str, default='dataset/polar',
                         help='Path to dataset directory')
-    parser.add_argument('--split', type=str, default='val', choices=['train', 'val'],
+    parser.add_argument('--split', type=str, default='val', choices=['train', 'val', 'test'],
                         help='Dataset split to use')
     parser.add_argument('--zoo-dataset', type=str, default=None,
                         help='FiftyOne zoo dataset name (overrides dataset-dir/split)')

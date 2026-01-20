@@ -84,6 +84,14 @@ def load_rtmpose_predictions(pred_dir):
     return predictions
 
 
+def _is_yolo_dataset_dir(dataset_dir):
+    dataset_dir = Path(dataset_dir)
+    for name in ("dataset.yaml", "data.yaml"):
+        if (dataset_dir / name).is_file():
+            return True
+    return False
+
+
 def build_coco_skeleton():
     return fo.KeypointSkeleton(
         labels=COCO_KEYPOINT_LABELS,
@@ -336,11 +344,11 @@ def evaluate_pose(
 
 
 def create_fiftyone_dataset(
-    source='zoo',
-    dataset_dir='dataset',
+    source='local',
+    dataset_dir='dataset/polar',
     split='val',
     output_dir='outputs',
-    dataset_name='rtmpose-results',
+    dataset_name='polar-rtmpose',
     persistent=False,
     zoo_dataset='coco-2017',
     zoo_split='validation',
@@ -359,8 +367,8 @@ def create_fiftyone_dataset(
     Create a FiftyOne dataset with images and RTMPose predictions.
 
     Args:
-        dataset_dir: Path to dataset directory
-        split: Dataset split to use ('train' or 'val')
+        dataset_dir: Path to dataset directory (YOLO datasets supported)
+        split: Dataset split to use ('train', 'val', or 'test')
         output_dir: Directory containing RTMPose outputs
         dataset_name: Name for the FiftyOne dataset
         persistent: Whether to make the dataset persistent
@@ -383,35 +391,44 @@ def create_fiftyone_dataset(
             )
         else:
             print(f"Creating new FiftyOne dataset: {dataset_name}")
+            dataset_dir = Path(dataset_dir)
+            if _is_yolo_dataset_dir(dataset_dir):
+                dataset = fo.Dataset.from_dir(
+                    dataset_dir=str(dataset_dir),
+                    dataset_type=fo.types.YOLOv5Dataset,
+                    split=split,
+                    label_field="ground_truth",
+                    name=dataset_name,
+                )
+                dataset.persistent = persistent
+            else:
+                dataset = fo.Dataset(dataset_name, persistent=persistent)
 
-            # Create dataset
-            dataset = fo.Dataset(dataset_name, persistent=persistent)
+                # Get image directory
+                image_dir = dataset_dir / split
+                if not image_dir.exists():
+                    raise ValueError(f"Image directory not found: {image_dir}")
 
-            # Get image directory
-            image_dir = Path(dataset_dir) / split
-            if not image_dir.exists():
-                raise ValueError(f"Image directory not found: {image_dir}")
+                # Get all images
+                image_files = []
+                for ext in ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG']:
+                    image_files.extend(list(image_dir.rglob(ext)))
 
-            # Get all images
-            image_files = []
-            for ext in ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG']:
-                image_files.extend(list(image_dir.rglob(ext)))
+                print(f"Found {len(image_files)} images in {split} split")
 
-            print(f"Found {len(image_files)} images in {split} split")
+                # Add samples to dataset
+                samples = []
+                for img_path in image_files:
+                    img_path = Path(img_path)
 
-            # Add samples to dataset
-            samples = []
-            for img_path in image_files:
-                img_path = Path(img_path)
+                    # Create sample
+                    sample = fo.Sample(filepath=str(img_path))
 
-                # Create sample
-                sample = fo.Sample(filepath=str(img_path))
+                    # Add metadata
+                    sample["split"] = split
+                    samples.append(sample)
 
-                # Add metadata
-                sample["split"] = split
-                samples.append(sample)
-
-            dataset.add_samples(samples)
+                dataset.add_samples(samples)
 
     if apply_coco_skeleton:
         dataset.default_skeleton = build_coco_skeleton()
@@ -476,21 +493,21 @@ def main():
     parser.add_argument(
         '--source',
         type=str,
-        default='zoo',
+        default='local',
         choices=['local', 'zoo'],
-        help='Dataset source: local directory or FiftyOne zoo'
+        help='Dataset source: local directory (YOLO supported) or FiftyOne zoo'
     )
     parser.add_argument(
         '--dataset-dir',
         type=str,
-        default='dataset',
+        default='dataset/polar',
         help='Path to dataset directory'
     )
     parser.add_argument(
         '--split',
         type=str,
         default='val',
-        choices=['train', 'val'],
+        choices=['train', 'val', 'test'],
         help='Dataset split to use'
     )
     parser.add_argument(
@@ -520,7 +537,7 @@ def main():
     parser.add_argument(
         '--dataset-name',
         type=str,
-        default='rtmpose-results',
+        default='polar-rtmpose',
         help='Name for the FiftyOne dataset'
     )
     parser.add_argument(
